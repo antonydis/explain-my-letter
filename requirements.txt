@@ -3,3 +3,6 @@ openai
 pytesseract
 pillow
 pymupdf
+gspread
+oauth2client
+pyperclip

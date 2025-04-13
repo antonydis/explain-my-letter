@@ -1,9 +1,51 @@
 import streamlit as st
 from openai import OpenAI
 import os
+import re
 from PIL import Image
 import fitz  # PyMuPDF
 import pytesseract
+import requests
+import random
+import string
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+from datetime import datetime
+
+
+def send_otp_email(recipient_email, otp_code):
+    api_key = st.secrets["RESEND_API_KEY"]
+    sender_email = "onboarding@resend.dev"  # Para pruebas, Resend lo permite
+    subject = "Your one-time verification code"
+    html_content = f"""
+    <p>Hello,</p>
+    <p>Your verification code is:</p>
+    <h2 style='color:#6c6fcb'>{otp_code}</h2>
+    <p>Please enter it in the form to continue using ExplainMyLetter.</p>
+    """
+
+    response = requests.post(
+        "https://api.resend.com/emails",
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        json={
+            "from": sender_email,
+            "to": [recipient_email],
+            "subject": subject,
+            "html": html_content,
+        },
+    )
+    return response.status_code == 200
+
+
+# Initialize session state variables
+if "otp_sent" not in st.session_state:
+    st.session_state.otp_sent = False
+if "otp_validated" not in st.session_state:
+    st.session_state.otp_validated = False
+if "name" not in st.session_state:
+    st.session_state.name = ""
+if "email" not in st.session_state:
+    st.session_state.email = ""
 
 # 🌍 Language selection
 language_options = ["English", "Spanish", "French", "Mandarin Chinese","Punjabi", "Arabic"]
@@ -17,7 +59,9 @@ ui_texts = {
         "upload_label": "Upload your document",
         "submit_button": "Get explanation",
         "error_no_text": "We couldn't read any text from the file. Try again with a clearer or more legible document.",
-        "error_type": "Unsupported file type."
+        "error_type": "Unsupported file type.",
+        "gpt_title": "Explanation"
+
     },
     "Spanish": {
         "title": "Entiende tus cartas oficiales del gobierno de Canadá",
@@ -25,7 +69,9 @@ ui_texts = {
         "upload_label": "Sube tu documento",
         "submit_button": "Obtener explicación",
         "error_no_text": "No pudimos leer ningún texto del archivo. Intenta nuevamente con un documento más claro o legible.",
-        "error_type": "Tipo de archivo no soportado."
+        "error_type": "Tipo de archivo no soportado.",
+        "gpt_title": "Explicación"
+
     },
     "French": {
         "title": "Comprenez vos lettres officielles du gouvernement canadien",
@@ -33,7 +79,8 @@ ui_texts = {
         "upload_label": "Téléverser votre document",
         "submit_button": "Obtenir une explication",
         "error_no_text": "Nous n'avons pas pu lire le texte du fichier. Veuillez réessayer avec un document plus lisible.",
-        "error_type": "Type de fichier non pris en charge."
+        "error_type": "Type de fichier non pris en charge.",
+        "gpt_title": "Explication"
     },
     "Mandarin Chinese": {
         "title": "了解您收到的加拿大政府官方信件",
@@ -70,46 +117,101 @@ st.write(text["subtitle"])
 openai_api_key = st.secrets["OPENAI_API_KEY"]
 client = OpenAI(api_key=openai_api_key)
 
-# File uploader and button
-uploaded_file = st.file_uploader(f"### {text['upload_label']}", type=("txt", "md", "pdf", "jpg", "png", "jpeg"))
+# Google Sheets logging (mover arriba del paso 3)
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+creds = ServiceAccountCredentials.from_json_keyfile_name("google_sheets_credentials.json", scope)
+client_gsheets = gspread.authorize(creds)
+
+sheet_id = "1lvqJEE9jQTBA6drqpUukl75bj8SPwz_og4iGyfj_N4k"
+worksheet = client_gsheets.open_by_key(sheet_id).sheet1
+
 # 💅 Custom button styling
 st.markdown("""
-    <style>
-    div.stButton > button {
-        background-color: #2c2f33;
-        color: white;
-        border: none;
-        padding: 0.5em 1.5em;
-        border-radius: 8px;
-        font-weight: bold;
-        font-size: 1rem;
-        transition: background-color 0.3s ease;
-    }
-
-    div.stButton > button:hover {
-        background-color: #6c6fcb;
-        color: white;
-    }
-
-    div.stButton > button:focus, div.stButton > button:active {
+<style>
+    /* --- BOTONES (estándar y en formularios) --- */
+    button {
         background-color: #2c2f33 !important;
         color: white !important;
-        outline: none;
-        box-shadow: none;
+        border: none !important;
+        padding: 0.5em 1.5em !important;
+        border-radius: 8px !important;
+        font-weight: bold !important;
+        font-size: 1rem !important;
+        transition: background-color 0.3s ease !important;
     }
-    </style>
+
+    button:hover {
+        background-color: #6c6fcb !important;
+        color: white !important;
+    }
+
+    /* --- INPUTS --- */
+    input[type="text"], input[type="email"] {
+        background-color: #1e1e1e !important;
+        color: white !important;
+        border: 2px solid #2c2f33 !important;
+        border-radius: 6px !important;
+        padding: 0.5em !important;
+    }
+
+    input[type="text"]:focus, input[type="email"]:focus {
+        border-color: #6c6fcb !important;
+        outline: none !important;
+    }
+
+    /* Quitar rojo de error */
+    .stTextInput > div > input:focus {
+        border-color: #6c6fcb !important;
+        box-shadow: none !important;
+    }
+
+    /* Extra: para radios (feedback) si quieres un estilo similar */
+    .stRadio > div {
+        gap: 1rem;
+    }
+</style>
 """, unsafe_allow_html=True)
 
 
-# Botón de submit
-submit = st.button(text["submit_button"])
 
-# Process the file and generate explanation
-if submit and uploaded_file:
+
+
+# Initialize step state
+if "step" not in st.session_state:
+    st.session_state.step = 1
+
+# STEP 1 — Upload document
+if st.session_state.step == 1:
+    uploaded_file = st.file_uploader(f"### {text['upload_label']}", type=("txt", "md", "pdf", "jpg", "png", "jpeg"), key="file_upload_step1")
+    if st.button("Continue"):
+        if uploaded_file:
+            st.session_state.uploaded_file = uploaded_file  # Save file
+            st.session_state.step = 2
+            st.rerun()
+
+# STEP 2 — Ask for name and email
+elif st.session_state.step == 2:
+    with st.form("user_info_form"):
+        st.session_state.name = st.text_input("Your name", value=st.session_state.name)
+        st.session_state.email = st.text_input("Your email", value=st.session_state.email)
+        confirm = st.form_submit_button("Get my explanation") 
+
+    if confirm:
+        st.session_state.step = 3
+        st.rerun()
+
+# STEP 3 — Process and explain
+elif st.session_state.step == 3:
+    uploaded_file = st.session_state.uploaded_file
+
+    # 🛡️ Validación de seguridad para evitar errores si el estado se rompe
+    if not uploaded_file or not st.session_state.name or not st.session_state.email:
+        st.error("Please upload your letter and provide your name and email first.")
+        st.stop()
+
     file_type = uploaded_file.type
     document = ""
 
-    # Extract text from file
     if file_type in ["text/plain", "text/markdown"]:
         document = uploaded_file.read().decode()
     elif file_type == "application/pdf":
@@ -132,6 +234,7 @@ if submit and uploaded_file:
         1. Detect the original language of the letter.
         2. Read the document carefully, do a summary and explain it using clear, professional, and easy-to-understand language in {preferred_language}.
         3. If any actions are required, list them in concise, numbered steps.
+        4. Identify the type of document using one of the following categories: immigration, taxes, health, driver’s license, or other. Clearly state: "Document type: ___" at the beginning of your response.
 
         Important:
         - If the content is related to legal matters, clearly state that the explanation is for informational purposes only and does not constitute legal advice.
@@ -150,7 +253,39 @@ if submit and uploaded_file:
             stream=True,
         )
 
-        st.markdown("### Explanation")
-        st.write_stream(stream)
+        st.markdown(f"### {text['gpt_title']}")
+
+        gpt_response_text = "".join([chunk.choices[0].delta.content or "" for chunk in stream])
+
+        match = re.search(r"Document type:\s*(.+)", gpt_response_text, re.IGNORECASE)
+        doc_category = match.group(1).strip() if match else "Unknown"
+
+        worksheet.append_row([
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            st.session_state.name,
+            st.session_state.email,
+            preferred_language,
+            doc_category,
+            gpt_response_text,
+        ])
+
+        # Mostrar texto formateado
+        st.markdown(gpt_response_text.strip(), unsafe_allow_html=False)
+
+        # Mostrar botón visual de copia al portapapeles
+        st.markdown(f"""
+            <h4>📋 Copy your explanation</h4>
+            <textarea id="gpt-output" style="width:100%; height:200px; padding:10px; border-radius:8px; font-size:1rem;">{gpt_response_text.strip()}</textarea>
+            <br><button onclick="copyText()" style="background-color:#6c6fcb; color:white; border:none; padding:10px 20px; border-radius:8px; font-weight:bold; font-size:1rem; cursor:pointer;">Copy text</button>
+            <script>
+            function copyText() {{
+                var copyText = document.getElementById("gpt-output");
+                copyText.select();
+                document.execCommand("copy");
+                alert("Copied to clipboard!");
+            }}
+            </script>
+        """, unsafe_allow_html=True)
+
     else:
         st.warning(text["error_no_text"])
