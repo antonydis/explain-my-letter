@@ -272,20 +272,5 @@ elif st.session_state.step == 3:
         # Mostrar texto formateado
         st.markdown(gpt_response_text.strip(), unsafe_allow_html=False)
 
-        # Mostrar botón visual de copia al portapapeles
-        st.markdown(f"""
-            <h4>📋 Copy your explanation</h4>
-            <textarea id="gpt-output" style="width:100%; height:200px; padding:10px; border-radius:8px; font-size:1rem;">{gpt_response_text.strip()}</textarea>
-            <br><button onclick="copyText()" style="background-color:#6c6fcb; color:white; border:none; padding:10px 20px; border-radius:8px; font-weight:bold; font-size:1rem; cursor:pointer;">Copy text</button>
-            <script>
-            function copyText() {{
-                var copyText = document.getElementById("gpt-output");
-                copyText.select();
-                document.execCommand("copy");
-                alert("Copied to clipboard!");
-            }}
-            </script>
-        """, unsafe_allow_html=True)
-
     else:
         st.warning(text["error_no_text"])
