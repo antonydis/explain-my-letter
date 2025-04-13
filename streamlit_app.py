@@ -13,29 +13,6 @@ from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 
 
-def send_otp_email(recipient_email, otp_code):
-    api_key = st.secrets["RESEND_API_KEY"]
-    sender_email = "onboarding@resend.dev"  # Para pruebas, Resend lo permite
-    subject = "Your one-time verification code"
-    html_content = f"""
-    <p>Hello,</p>
-    <p>Your verification code is:</p>
-    <h2 style='color:#6c6fcb'>{otp_code}</h2>
-    <p>Please enter it in the form to continue using ExplainMyLetter.</p>
-    """
-
-    response = requests.post(
-        "https://api.resend.com/emails",
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        json={
-            "from": sender_email,
-            "to": [recipient_email],
-            "subject": subject,
-            "html": html_content,
-        },
-    )
-    return response.status_code == 200
-
 
 # Initialize session state variables
 if "otp_sent" not in st.session_state:
