@@ -11,6 +11,7 @@ import string
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
+import json
 
 
 
@@ -96,9 +97,9 @@ client = OpenAI(api_key=openai_api_key)
 
 # Google Sheets logging (mover arriba del paso 3)
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds = ServiceAccountCredentials.from_json_keyfile_name("google_sheets_credentials.json", scope)
+creds_dict = st.secrets["google_sheets"]
+creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(creds_dict), scope)
 client_gsheets = gspread.authorize(creds)
-
 sheet_id = "1lvqJEE9jQTBA6drqpUukl75bj8SPwz_og4iGyfj_N4k"
 worksheet = client_gsheets.open_by_key(sheet_id).sheet1
 
