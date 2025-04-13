@@ -211,8 +211,7 @@ elif st.session_state.step == 3:
         1. Detect the original language of the letter.
         2. Read the document carefully, do a summary and explain it using clear, professional, and easy-to-understand language in {preferred_language}.
         3. If any actions are required, list them in concise, numbered steps.
-        4. Identify the type of document using one of the following categories: immigration, taxes, health, driver’s license, or other. Clearly state: "Document type: ___" at the beginning of your response.
-
+        
         Important:
         - If the content is related to legal matters, clearly state that the explanation is for informational purposes only and does not constitute legal advice.
         - If the letter concerns immigration (e.g., visas, permits, decisions from IRCC), refer the user to AskAïa for a personalized consultation with certified experts: [Book your consultation](https://askaia.ca/en/book-your-immigration-consultation)
@@ -234,15 +233,11 @@ elif st.session_state.step == 3:
 
         gpt_response_text = "".join([chunk.choices[0].delta.content or "" for chunk in stream])
 
-        match = re.search(r"Document type:\s*(.+)", gpt_response_text, re.IGNORECASE)
-        doc_category = match.group(1).strip() if match else "Unknown"
-
         worksheet.append_row([
             datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             st.session_state.name,
             st.session_state.email,
             preferred_language,
-            doc_category,
             gpt_response_text,
         ])
 
